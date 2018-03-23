@@ -150,8 +150,6 @@ class Shoptet:
 
     @login_required
     def get_last_order_id(self):
-        # if not self.logged_in:
-        #     self.login()
         self.get_order_page()
         last_order_id = sh.find_pattern('<tr id="rowId-(?P<order_id>\d+)', get_first=True)
         print('last_order %s' % last_order_id)
