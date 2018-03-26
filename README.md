@@ -10,13 +10,31 @@ for loyalty system n shop that will be able to access the eshop data and evaluat
 them. 
 
 
+## INSTALLATION
+
+Clone code from the repository
+
+    `git clone git@github.com:mimmon/shoptet-api.git`
+
+Create virtual environment so that you don't mess your system. Use python3 as an interpreter.
+
+    `virtualenv -p python3 venv`
+
+Activate your environment.
+
+    `. venv/bin/activate`
+
+Install required libraries.
+
+    `pip install -r requirements`
+
 
 
 ## ROADMAP
 
 ### Basic tasks
 
-* **login to admin**
+* _**login to admin**_
 
 
 ### Orders

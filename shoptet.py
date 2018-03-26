@@ -29,7 +29,7 @@ def parse_config(filename):
 config = parse_config(CONFIG_FILE)
 
 BASE_URL = config.get('BASE_URL', 'YOUR-URL')
-BASE_URL = BASE_URL + os.sep if not BASE_URL.endswith(os.sep) else ''
+BASE_URL = BASE_URL + (os.sep if not BASE_URL.endswith(os.sep) else '')
 ADMIN_URL = BASE_URL + 'admin/'
 LOGIN_URL = ADMIN_URL + 'login/'
 
@@ -88,7 +88,7 @@ class Shoptet:
         el = self.browser.find_element('name', 'password')
         el.send_keys(PASSWORD)
 
-        el = self.browser.find_element(By.XPATH, '//input[@class="fake-submit"]')
+        el = self.browser.find_element(By.XPATH, '//a[@href=\"#\"]')
         el.click()
 
         self.logged_in = True
