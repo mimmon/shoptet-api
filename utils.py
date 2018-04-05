@@ -1,7 +1,10 @@
 from decimal import Decimal
 import logging
 
-from .models import Customer
+try:
+    from .models import User, Order, OrderLine
+except SystemError:
+    from models import User, Order, OrderLine
 
 _logger = logging.getLogger(__name__)
 
@@ -116,29 +119,3 @@ def filter_contents(elem):
     f = lambda x: isinstance(x, str) or getattr(x, 'name', None) != 'br'
     for i in filter(f, elem.contents):
         yield i
-
-
-# DATABASE HANDLING
-def save_order(order_details):
-    uinfo = order_details.get('user_info')
-    customer = Customer.get_or_create(**uinfo)
-
-    order = Order()
-    for order_line in order_details.get('order_lines', []):
-        order_id = order.id
-        OrderLine()
-
-
-    if uinfo:
-        # find if user exists in database
-        if 'email' in uinfo:
-            Customer.get(email=uinfo['email'])
-        elif 'code' in uinfo:
-            Customer.get(code=uinfo['code'])
-
-        for key in ['email', 'code']:
-            if key in uinfo:
-                Customer.get(**{key: uinfo[key]})
-                break
-        else:
-            raise MissingKeyError

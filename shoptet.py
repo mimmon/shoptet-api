@@ -3,13 +3,20 @@
 from bs4 import BeautifulSoup
 from decimal import Decimal
 import logging
-from lxml import etree, html
+from lxml import html
 import os
 import re
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
-from .utils import *
+try:
+    from .utils import *
+except (ImportError, SystemError):
+    from utils import *
+try:
+    from .models import save_order
+except (ImportError, SystemError):
+    from models import save_order
 
 _logger = logging.getLogger(__name__)
 
@@ -95,6 +102,7 @@ class Shoptet:
         # wip - this only get the first one
         # self.browser.find_element(By.CSS_SELECTOR, "tr[id*='rowId-']")
         # html = etree.parse(self.browser.page_source, parser=etree.HTMLParser(remove_comments=True))
+        # TODO refactor using BeautifulSoup
         doc = html.document_fromstring(self.browser.page_source)
         order_ids = map(int,
                         self.find_pattern('<tr id="rowId-(?P<order_id>\d+)'))
@@ -204,7 +212,7 @@ class Shoptet:
             p_description = handle_element(tds[2], 'span', lambda x: x.text)
             p_status = handle_contents(tds[3])
             # todo add units to amount
-            p_amount = handle_contents(tds[4], lambda x: len(x.split()) > 1 and x.split()[0] else x)
+            p_amount = handle_contents(tds[4], lambda x: len(x.split()) > 1 and x.split()[0] or x)
             p_unit_price = handle_content_price(tds[5])
             p_discount_percent = handle_contents(
                 tds[6], lambda x: x.span.text.strip().rstrip(' %'), Decimal)
@@ -231,8 +239,8 @@ class Shoptet:
             })
 
         # TODO create function in utils using peewee ORM
-        # if save:
-        #     save_order(order_details)
+        if save:
+            save_order(order_details)
 
         return order_details
 
@@ -265,7 +273,7 @@ if __name__ == '__main__':
     for order in orders[:5]:
         url = order.get('order_url')
         print(url)
-        shop.get_order_from_link(url)
+        shop.get_order_from_link(url, save=True)
     # TO BE UNCOMMENTED WHEN DB IS FINISHED
     # for page in range(max_page, 0):
     #     sh.browse_orders(page)
@@ -282,4 +290,3 @@ if __name__ == '__main__':
 #### get a single order detail + make it parse through all of them
 #### parse vouchers
 #### check voucher
-
