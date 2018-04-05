@@ -29,12 +29,23 @@ Install required libraries.
     `pip install -r requirements`
 
 
+## DEVELOPMENT GUIDELINES
+
+There are not too many guidelines.
+
+- the length of line should be below 120
+
+- PEP8 (space between classes, methods, operators, commas...)
+
+That's all folks.
+
 
 ## ROADMAP
 
 ### Basic tasks
 
 * _**login to admin**_
+* _**open order if known link and get info about it**_
 
 
 ### Orders
@@ -46,9 +57,16 @@ Install required libraries.
 
 ### DB
 
-* integration with db - sqlite3 would be enough (using peewee?)
+* integration with db - sqlite3 would be enough (using peewee)
+* create relevant models and convenience methods for easy data manipulation
 * store and use relevant data for faster data fetching
 * allow updates on records, allow marking finished to deny updates if impossible
+
+
+### Security
+
+* add check to ~/.shoptet config file, stop program if access rights are not 600 or 400
+  (in order to prevent other to see the password)
 
 
 ### Cron jobs
