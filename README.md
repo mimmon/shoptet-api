@@ -35,7 +35,7 @@ There are not too many guidelines.
 
 - the length of line should be below 120
 
-- PEP8 (space between classes, methods, operators, commas...)
+- PEP8 (space between classes, methods, operators, commas... lambda definitions are allowed)
 
 That's all folks.
 
@@ -57,8 +57,8 @@ That's all folks.
 
 ### DB
 
-* integration with db - sqlite3 would be enough (using peewee)
-* create relevant models and convenience methods for easy data manipulation
+* _**integration with db - sqlite3 would be enough (using peewee)**_
+* _**create relevant models and convenience methods for easy data manipulation**_
 * store and use relevant data for faster data fetching
 * allow updates on records, allow marking finished to deny updates if impossible
 

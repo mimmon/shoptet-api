@@ -6,8 +6,11 @@ import logging
 from lxml import html
 import os
 import re
+import datetime
+from peewee import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+
 
 try:
     from .utils import *
@@ -135,6 +138,42 @@ class Shoptet:
         shop.browser.get(BASE_URL + url)
         soup = BeautifulSoup(self.browser.page_source, 'html5lib')
 
+        # order details and order num can be received in other place of code
+        # this is to ensure we can get those independently from sheer url
+        r = re.search(r'\?id=(?P<order_id>\d+)', url)
+        order_shop_id = r.group('order_id') if r else None
+        order_details['order_shop_id'] = order_shop_id
+        order_details['order_num'] = soup.h1.strong.text
+
+        open_date = None
+        raw_open_date = soup.find_all('span', {'id': 'order-date'})
+        if raw_open_date:
+            open_date = datetime.datetime.strptime(raw_open_date[0].text, '(%d.%m.%Y %H:%M:%S)')
+        order_details['open_date'] = open_date
+
+        # todo decide if choices are used or plain text from web
+        status_id = soup.find('select', {'id': 'status-id'})
+        if status_id:
+            option = status_id.find('option', {'selected': 'selected'})
+            if option:
+                status = option.text
+                order_details['status'] = status
+
+        # ** order_shop_id = ForeignKeyField(Shop, backref='orders')
+        # ** order_num = CharField()
+        # ** price_no_vat = DecimalField()   # this is handled later
+        # ** vat = DecimalField()            # this is handled later
+        # ** total_price = DecimalField()    # this is handled later
+        # price_applicable = DecimalField(null=True)         # todo check if not discount and subtract postage
+        # discount = DecimalField(null=True)                 #
+        # shipping = CharField(null=True)                    # todo after orderlines are processed
+        # shipping_cost = DecimalField(null=True)            # todo after orderlines are processed
+        # ** status = CharField(choices=ORDER_STATUS_CHOICES)   #
+        # ?? user_id = ForeignKeyField(User, backref='orders')  # todo
+        # ** open_date = DateField()
+        # .. close_date = DateField(null=True)                  # todo this can be found in another page, not critical,
+        #                                                      # will be resolved later
+
         # CONTACT
         uinfo = order_details.setdefault('user_info', {})
         email = None
@@ -191,7 +230,7 @@ class Shoptet:
         div_total_price = soup.find('div', {'class': 'total-price'})
         for line in filter_contents(div_total_price):
             for keyword, content, contra in [
-                    ('no_vat_price', 'Cena bez DPH:', None),
+                    ('price_no_vat', 'Cena bez DPH:', None),
                     ('vat', 'DPH:', 'Cena bez DPH:'),
                     ('total_price', 'Čiastka k úhrade:', None)]:
                 # total price is not navigable string, but Tag (<big>)
@@ -212,7 +251,9 @@ class Shoptet:
             p_description = handle_element(tds[2], 'span', lambda x: x.text)
             p_status = handle_contents(tds[3])
             # todo add units to amount
-            p_amount = handle_contents(tds[4], lambda x: len(x.split()) > 1 and x.split()[0] or x)
+            p_amount = handle_contents(tds[4],
+                                       lambda x: len(x.split()) > 1 and x.split()[0] or x,
+                                       recursive=True)
             p_unit_price = handle_content_price(tds[5])
             p_discount_percent = handle_contents(
                 tds[6], lambda x: x.span.text.strip().rstrip(' %'), Decimal)
@@ -238,11 +279,26 @@ class Shoptet:
                 'total_vat_including': p_total_vat_including,
             })
 
-        # TODO create function in utils using peewee ORM
         if save:
-            save_order(order_details)
+            order = save_order(order_details)
 
-        return order_details
+        # order discount
+        discount = 0
+        for orderline in order_details['order_lines']:
+            pc = orderline.get('discount_percent')
+            if pc:
+                discount += orderline.get('total_vat_including') * pc / (100 - pc)
+        order.discount = discount
+
+        # shipping costs
+        shipping_cost = sum(ol.total_price for ol in OrderLine.select().where(
+            OrderLine.order_id == order.id and OrderLine.code in ['', None]))
+
+        order.price_applicable = (order.total_price - shipping_cost) \
+            if not discount \
+                else Decimal('0.00')
+        order.save()
+        return order
 
     def get_order(self, order_number, save=False):
         """Get link from DB and call get_order_from_link, optionally store to database"""
@@ -270,7 +326,7 @@ if __name__ == '__main__':
     max_page = shop.get_max_page()
     orders = shop.browse_orders(max_page)
 
-    for order in orders[:5]:
+    for order in orders[5:15]:
         url = order.get('order_url')
         print(url)
         shop.get_order_from_link(url, save=True)
@@ -290,3 +346,4 @@ if __name__ == '__main__':
 #### get a single order detail + make it parse through all of them
 #### parse vouchers
 #### check voucher
+# TODO move requirements into git repo

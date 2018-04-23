@@ -76,7 +76,7 @@ def handle_element(elem, args, func=None, func2=None):
         return _found
 
 
-def handle_contents(elem, func=None, func2=None):
+def handle_contents(elem, func=None, func2=None, recursive=False):
     """
     Helper function to extract data from a single line / unstructure entry
     :param elem: BeautifulSoup Tag (element)
@@ -84,7 +84,16 @@ def handle_contents(elem, func=None, func2=None):
     :param func2: outer function, may be used to convert the result
     :return: content of content processed by func or None if not found
     """
-    return handle_element(elem.contents[0].strip(), None, func, func2)
+    result = handle_element(elem.contents[0].strip(), None, func, func2)
+    if not recursive or result:
+        return result
+    for line in elem.contents:
+        try:
+            # return first none empty  # todo improve this method
+            return handle_element(line.contents[0].strip(), None, func, func2)
+        except:
+            continue
+        return None
 
 
 def handle_content_price(elem, clean=None):
