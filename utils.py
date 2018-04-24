@@ -84,6 +84,8 @@ def handle_contents(elem, func=None, func2=None, recursive=False):
     :param func2: outer function, may be used to convert the result
     :return: content of content processed by func or None if not found
     """
+    if not func:
+        func = lambda x: x
     result = handle_element(elem.contents[0].strip(), None, func, func2)
     if not recursive or result:
         return result

@@ -101,7 +101,7 @@ class Order(DBModel):
     user_id = ForeignKeyField(User, backref='orders')
     open_date = DateTimeField()
     close_date = DateTimeField(null=True)
-    url = CharField(null=True)  # used for storing url in eshop for easier access
+    # url = CharField(null=True)  # used for storing url in eshop for easier access
 
 
 class OrderLine(DBModel):
@@ -181,14 +181,14 @@ def save_order(order_details):
     try:
         order = Order.get(order_shop_id=order_details.get('order_shop_id'))
     except:
-        order = None
-    if not order:
         _fields = [d for d in Order._meta.fields]
         order_keys = {key: value for key, value in order_details.items() if key in _fields}
         order_keys.update({k: order_details.get(k) for k in ['order_shop_id', 'order_num']})
         order = Order(**order_keys)
         order.user_id = user.id
         order.save()
+        q = OrderLine.delete().where(OrderLine.order_id == order.id)
+        q.execute()
         for order_line in order_details.get('order_lines', []):
             line_dict = process_order_line(order_line)
             line_dict.update({'order_id': order.id})

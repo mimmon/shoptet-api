@@ -282,22 +282,25 @@ class Shoptet:
         if save:
             order = save_order(order_details)
 
-        # order discount
-        discount = 0
-        for orderline in order_details['order_lines']:
-            pc = orderline.get('discount_percent')
-            if pc:
-                discount += orderline.get('total_vat_including') * pc / (100 - pc)
-        order.discount = discount
+            # order discount
+            discount = 0
+            for orderline in order_details['order_lines']:
+                pc = orderline.get('discount_percent')
+                if pc:
+                    discount += orderline.get('total_vat_including') * pc / (100 - pc)
+            order.discount = discount
 
-        # shipping costs
-        shipping_cost = sum(ol.total_price for ol in OrderLine.select().where(
-            OrderLine.order_id == order.id and OrderLine.code in ['', None]))
+            # shipping costs
+            shipping_lines = order.order_lines.where(OrderLine.code >> None)
+            shipping_cost = sum(ol.total_price for ol in shipping_lines)
 
-        order.price_applicable = (order.total_price - shipping_cost) \
-            if not discount \
-                else Decimal('0.00')
-        order.save()
+            plain_price = order.total_price - shipping_cost
+            # price applicable for loyalty system - only if no discount applied
+            order.price_applicable = plain_price if not discount else Decimal('0.00')
+            order.shipping_cost = shipping_cost
+            order.shipping = ';'.join(o.description for o in shipping_lines)
+            order.save()
+        # todo find a way to consistently return either object or dictionary accroding to save parameter
         return order
 
     def get_order(self, order_number, save=False):
@@ -315,9 +318,11 @@ class Shoptet:
     def get_user_by_id(self):
         pass
 
-    def get_user_by_email(self):
-        # get from db
-        pass
+    def get_user_by_email(self, email):
+        try:
+            return User.get(User.email == email)
+        except DoesNotExist:
+            return None
 
 
 if __name__ == '__main__':
@@ -326,7 +331,7 @@ if __name__ == '__main__':
     max_page = shop.get_max_page()
     orders = shop.browse_orders(max_page)
 
-    for order in orders[5:15]:
+    for order in orders[:20]:
         url = order.get('order_url')
         print(url)
         shop.get_order_from_link(url, save=True)
@@ -336,6 +341,10 @@ if __name__ == '__main__':
     shop.get_last_order_id()
 
     pass
+
+# TODO make functions that will continue with next order
+# make a log record according to which we will find the last written order and then continue
+# make flag on order so taht we know it is already closed and we do not have to deal with it
 
 
 ## ADD ARGUMENT PARSER
