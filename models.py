@@ -1,6 +1,7 @@
 import datetime
 from decimal import Decimal
 import random
+import re
 import string
 
 from peewee import *
@@ -88,7 +89,7 @@ class Shop(DBModel):
 
 
 class Order(DBModel):
-    order_shop_id = IntegerField(null=True)
+    shop_order_id = IntegerField(null=True)
     order_num = CharField(null=True)
     price_no_vat = DecimalField()
     vat = DecimalField()
@@ -101,7 +102,9 @@ class Order(DBModel):
     user_id = ForeignKeyField(User, backref='orders')
     open_date = DateTimeField()
     close_date = DateTimeField(null=True)
-    # url = CharField(null=True)  # used for storing url in eshop for easier access
+    url = CharField(null=True)       # used for storing url in eshop for easier access
+    next_url = CharField(null=True)  # url of the next order
+    closed = BooleanField(default=False)
 
 
 class OrderLine(DBModel):
@@ -130,6 +133,8 @@ class Voucher(DBModel):
 class Log(DBModel):
     log_time = DateTimeField(default=datetime.datetime.now)
     event = CharField(choices=LOG_EVENTS)
+    model = CharField(null=True)
+    record = IntegerField(null=True)
     user_id = ForeignKeyField(SysUser, backref='logs', null=True)
     details = CharField(null=True)
 
@@ -152,7 +157,7 @@ def process_order_line(order_line):
 
 
 # DATABASE HANDLING
-def save_order(order_details):
+def save_order(order_details, update=True):
     uinfo = order_details.get('user_info')
     key = next(i for i in ['email', 'code'] if uinfo)
     value = uinfo.get(key, None)
@@ -181,20 +186,35 @@ def save_order(order_details):
     try:
         order = Order.get(order_shop_id=order_details.get('order_shop_id'))
     except:
-        _fields = [d for d in Order._meta.fields]
-        order_keys = {key: value for key, value in order_details.items() if key in _fields}
-        order_keys.update({k: order_details.get(k) for k in ['order_shop_id', 'order_num']})
-        order = Order(**order_keys)
-        order.user_id = user.id
+        pass  # no order found
+
+    if order and (not update or order.closed):
+        return order
+
+    _fields = [d for d in Order._meta.fields]
+    order_keys = {key: value for key, value in order_details.items() if key in _fields}
+    order_keys.update({k: order_details.get(k) for k in ['order_shop_id', 'order_num']})
+    order = Order(**order_keys)
+    order.user_id = user.id
+    order.save()
+    # delete orderlines so that we are sure they are always up-to-date
+    # todo find a way to avoid deleting them (compare line by line)
+    q = OrderLine.delete().where(OrderLine.order_id == order.id)
+    q.execute()
+    for order_line in order_details.get('order_lines', []):
+        line_dict = process_order_line(order_line)
+        line_dict.update({'order_id': order.id})
+        ol = OrderLine(**line_dict)
+        ol.save()
+    if order.close_date is not None and re.match('(Vybavená)|(Pripravená)|(Storno)', order.status):
+        order.closed = True
         order.save()
-        q = OrderLine.delete().where(OrderLine.order_id == order.id)
-        q.execute()
-        for order_line in order_details.get('order_lines', []):
-            line_dict = process_order_line(order_line)
-            line_dict.update({'order_id': order.id})
-            ol = OrderLine(**line_dict)
-            ol.save()
     return order
+
+
+def make_log(**kwargs):
+    log = Log(**kwargs)
+    return log.save()
 
 
 def create_shops():

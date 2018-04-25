@@ -17,9 +17,9 @@ try:
 except (ImportError, SystemError):
     from utils import *
 try:
-    from .models import save_order
+    from .models import save_order, make_log
 except (ImportError, SystemError):
-    from models import save_order
+    from models import save_order, make_log
 
 _logger = logging.getLogger(__name__)
 
@@ -34,7 +34,9 @@ LOGIN_URL = ADMIN_URL + '/login'
 EMAIL = config.get('EMAIL', 'EMAIL')
 PASSWORD = config.get('PASSWORD', 'PASSWORD')
 
-ORDER_LINK = ADMIN_URL + 'objednavky-detail/?id={order_id}'
+ORDER_LINK = '/admin/objednavky-detail/?id={order_id}'
+
+MAX_UPDATE_LIMIT = 50
 
 
 class Shoptet:
@@ -127,23 +129,51 @@ class Shoptet:
 
         return orders
 
+    def get_next_url_from_soup(self, soup):
+        url = soup.find('a', {'class': 'ico-next'})
+        href = url.attrs.get('href', '')
+        href = href.strip('&controllerReferer=')
+        return href
+
+    def get_next_url(self, order=None):
+        if order is None:
+            order = get_last_order()
+        if not order.url:
+            order.url = ORDER_LINK.format(**{'order_id': order.shop_order_id})
+            order.save()
+
+        shop.browser.get(BASE_URL + order.url)
+        soup = BeautifulSoup(self.browser.page_source, 'html5lib')
+        return self.get_next_url_from_soup(soup)
+
     @login_required
-    def get_order_from_link(self, url, save=False):
-        """Open url and scrape the order, optionally store to database"""
+    def open_order_from_url(self, url):
+        """Open url with order"""
         if not url:
-            _logger.warning('No url for order %s', order)
+            _logger.warning('No url for order.')
+            return None
+
+        _logger.info('Read order from %s', url)
+        shop.browser.get(BASE_URL + url)
+        soup = BeautifulSoup(self.browser.page_source, 'html5lib')
+        return soup
+
+    @login_required
+    def read_order_from_url(self, url):
+        """Open url and scrape the order, return structured data"""
+        soup = self.open_order_from_url(url)
+
+        if soup is None:
             return None
 
         order_details = {}
-        shop.browser.get(BASE_URL + url)
-        soup = BeautifulSoup(self.browser.page_source, 'html5lib')
-
         # order details and order num can be received in other place of code
         # this is to ensure we can get those independently from sheer url
         r = re.search(r'\?id=(?P<order_id>\d+)', url)
-        order_shop_id = r.group('order_id') if r else None
-        order_details['order_shop_id'] = order_shop_id
+        order_details['shop_order_id'] = r.group('order_id') if r else None
         order_details['order_num'] = soup.h1.strong.text
+        order_details['url'] = url
+        order_details['next_url'] = self.get_next_url_from_soup(soup)
 
         open_date = None
         raw_open_date = soup.find_all('span', {'id': 'order-date'})
@@ -152,80 +182,19 @@ class Shoptet:
         order_details['open_date'] = open_date
 
         # todo decide if choices are used or plain text from web
-        status_id = soup.find('select', {'id': 'status-id'})
-        if status_id:
-            option = status_id.find('option', {'selected': 'selected'})
-            if option:
-                status = option.text
-                order_details['status'] = status
+        status = get_status_from_soup(soup)
+        if status:
+            order_details['status'] = status
 
-        # ** order_shop_id = ForeignKeyField(Shop, backref='orders')
-        # ** order_num = CharField()
-        # ** price_no_vat = DecimalField()   # this is handled later
-        # ** vat = DecimalField()            # this is handled later
-        # ** total_price = DecimalField()    # this is handled later
-        # price_applicable = DecimalField(null=True)         # todo check if not discount and subtract postage
-        # discount = DecimalField(null=True)                 #
-        # shipping = CharField(null=True)                    # todo after orderlines are processed
-        # shipping_cost = DecimalField(null=True)            # todo after orderlines are processed
-        # ** status = CharField(choices=ORDER_STATUS_CHOICES)   #
-        # ?? user_id = ForeignKeyField(User, backref='orders')  # todo
-        # ** open_date = DateField()
         # .. close_date = DateField(null=True)                  # todo this can be found in another page, not critical,
-        #                                                      # will be resolved later
+        #                                                       # will be resolved later
 
-        # CONTACT
-        uinfo = order_details.setdefault('user_info', {})
-        email = None
-        contact = soup.find('td', {'id': 'customer-contact'})
-        try:
-            email = contact.p.a['href'].split(':', 1)[1]
-        except:
-            _logger.info('Email cannot be found')
-        uinfo.update({'email': email})
+        uinfo = get_user_info_from_soup(soup)
+        order_details['user_info'] = uinfo
 
-        phone = None
-        for line in filter(lambda x: 'Telefón' in x, contact.p.contents):
-            phones = re.findall('Telefón: *(\d+)?', line)
-            if phones:
-                phone = phones[0]
-                break
-        uinfo.update({'phone': phone})
-
-        # BILLING
-        billing = soup.find('td', {'id': 'billing-address'})
-        name_element = billing.find('a', {'title': 'Detail zákazníka'})
-        name = name_element.text if name_element else None
-        uinfo.update({'name': name})
-
-        # as the address in order details is stored as (more or less) plain text
-        # in this version of program it will be ignored
-        # in the future there can be a  individual scraper for users only
-        # users may be identified by email
-        # if save:
-        #     User.get()
-        #       if not user:
-        #             create_user()
-        #       Order.get()
-        #         if not order:
-        #           create_order()
-        #         else:
-        #            update_order()
-
-        ##############################################################
-        # MISSING PARAMS
-        # street = CharField(null=True)
-        # zip = CharField(null=True)
-        # city = CharField(null=True)
-        # country = CharField(null=True)
-        # phone = CharField(null=True)
-
-        order_details.setdefault('order_lines', [])
         # we need to save total price, transport price, plain price, discount applied
         # all of them including and excluding vat
-
         # postage/transport prices have no status and no code
-        # discount
         # total price with and without vat can be taken from summary below order
         div_total_price = soup.find('div', {'class': 'total-price'})
         for line in filter_contents(div_total_price):
@@ -240,71 +209,52 @@ class Shoptet:
                     order_details[keyword] = strip_price(line, content)
                     break
 
-        table = soup.find('table', {'class': 'std-table-listing'})
-        # todo add mapping from thead
-        for tr in table.tbody.find_all('tr'):
-            # for now we ignore individual items
-            # this iteration is to determine postage and transport prices
-            tds = tr.find_all('td')
-            p_code = handle_element(tds[0], 'a', lambda x: x.text.strip())
-            p_img = handle_element(tds[1], 'img', lambda x: x['src'])
-            p_description = handle_element(tds[2], 'span', lambda x: x.text)
-            p_status = handle_contents(tds[3])
-            # todo add units to amount
-            p_amount = handle_contents(tds[4],
-                                       lambda x: len(x.split()) > 1 and x.split()[0] or x,
-                                       recursive=True)
-            p_unit_price = handle_content_price(tds[5])
-            p_discount_percent = handle_contents(
-                tds[6], lambda x: x.span.text.strip().rstrip(' %'), Decimal)
-            p_vat_percent = handle_contents(
-                tds[7], lambda x: x.strip().rstrip('%'), Decimal)
-            p_total_vat_including = handle_content_price(tds[8])
-            p_del = handle_contents(tds[9])
+        # get order lines
+        order_lines = get_orderlines_from_soup(soup)
+        order_details['order_lines'] = order_lines
 
-            # todo store product lines and purchases for further analysis
-            # first step requires distinguishing between products and services
-            # (postage, pay-on-delivery)
-            # services are "products" with no code, image and status
-            # services should be negative - that is reserved for total_discount
-            order_details['order_lines'].append({
-                'code': p_code,
-                'img': p_img,
-                'description': p_description,
-                'status': p_status,
-                'amount': p_amount,
-                'unit_price': p_unit_price,
-                'discount_percent': p_discount_percent,
-                'vat_percent': p_vat_percent,
-                'total_vat_including': p_total_vat_including,
-            })
+        discount = Decimal('0.0')
+        for orderline in order_details['order_lines']:
+            pc = orderline.get('discount_percent', Decimal('0.0'))
+            if pc:
+                discount += orderline.get('total_vat_including') * pc / (100 - pc)
+        order_details['discount'] = discount
 
-        if save:
-            order = save_order(order_details)
+        # shipping costs
+        shipping_lines = [line for line in order_lines if line['code'] is None]
+        shipping_cost = sum(line['total_vat_including'] for line in shipping_lines)
 
-            # order discount
-            discount = 0
-            for orderline in order_details['order_lines']:
-                pc = orderline.get('discount_percent')
-                if pc:
-                    discount += orderline.get('total_vat_including') * pc / (100 - pc)
-            order.discount = discount
+        plain_price = order_details['total_price'] - shipping_cost
+        # price applicable for loyalty system - only if no discount applied
+        # add rules for applicable price - so that they are consistnent if system changes
+        order_details['price_applicable'] = plain_price if not discount else Decimal('0.00')
+        order_details['shipping_cost'] = shipping_cost
+        order_details['shipping'] = ';'.join(ln['description'] for ln in shipping_lines)
+        # todo discount voucher has no code but it is not shipping related
+        # get_close_date()
+        close_date = self.read_last_order_update()
+        if close_date:
+            order_details['close_date'] = close_date
 
-            # shipping costs
-            shipping_lines = order.order_lines.where(OrderLine.code >> None)
-            shipping_cost = sum(ol.total_price for ol in shipping_lines)
+        return order_details
 
-            plain_price = order.total_price - shipping_cost
-            # price applicable for loyalty system - only if no discount applied
-            order.price_applicable = plain_price if not discount else Decimal('0.00')
-            order.shipping_cost = shipping_cost
-            order.shipping = ';'.join(o.description for o in shipping_lines)
-            order.save()
-        # todo find a way to consistently return either object or dictionary accroding to save parameter
+    @login_required
+    def fetch_order_from_url(self, url, update=True):
+        """Open url and scrape the order, optionally store to database"""
+        if not url:
+            _logger.warning('No url for order.')
+            return None
+
+        order_details = self.read_order_from_url(url)
+        order = save_order(order_details, update=update)
+
+        # make log
+        loginfo = {'event': 'create', 'model': 'order', 'record': order.id}
+        make_log(**loginfo)
         return order
 
-    def get_order(self, order_number, save=False):
-        """Get link from DB and call get_order_from_link, optionally store to database"""
+    def get_order(self, **kwargs):
+        """Get link from DB using id, shop_order_id, order_num..."""
         pass
 
     @login_required
@@ -324,23 +274,88 @@ class Shoptet:
         except DoesNotExist:
             return None
 
+    def fetch_first_order(self):
+        max_page = self.get_max_page()
+        orders = self.browse_orders(max_page)
+        url = orders[0].get('order_url')
+        order = shop.fetch_order_from_url(url)
+
+        oid = order.id if isinstance(order, Order) else None
+        loginfo = {'event': 'create', 'model': 'order', 'record': oid}
+        make_log(**loginfo)
+
+        return order
+
+    def read_last_order_update(self, url=None):
+        if url is not None:
+            self.open_order_from_url(url)
+
+        el = self.browser.find_element(By.XPATH, '//a[@href=\"#t3\"]')
+        el.click()
+
+        td = self.browser.find_element(By.XPATH, '//div[@id=\"t3\"]//table//td')
+        close_date = None
+        if td:
+            close_date = datetime.datetime.strptime(td.text, '%d.%m.%Y %H:%M:%S')
+
+        el = self.browser.find_element(By.XPATH, '//a[@href=\"#t1\"]')
+        el.click()
+
+        return close_date
+
+    def get_last_added_order(self):
+        pass
+
+    def get_next_order(self, order=None):
+        # get last updated and get the next_one
+        if order is None:
+            order = self.get_last_added_order()
+        if order is None:
+            return self.get_first_order()
+        url = self.get_next_link(order)
+        return self.get_order_from_link(url) if url else None
+
+    def update_active_orders(self):
+        # filter active orders and update their status
+        pass
+
 
 if __name__ == '__main__':
     shop = Shoptet()
     shop.login()
-    max_page = shop.get_max_page()
-    orders = shop.browse_orders(max_page)
 
-    for order in orders[:20]:
-        url = order.get('order_url')
-        print(url)
-        shop.get_order_from_link(url, save=True)
-    # TO BE UNCOMMENTED WHEN DB IS FINISHED
-    # for page in range(max_page, 0):
-    #     sh.browse_orders(page)
-    shop.get_last_order_id()
+    # TODO add argparser
 
-    pass
+    action = 'update'
+
+    if not Order.select().count():
+        shop.fetch_first_order()
+
+    if action == 'update':
+        updated = 0
+        next_url = None
+        while MAX_UPDATE_LIMIT and updated < MAX_UPDATE_LIMIT:
+            url = next_url or shop.get_next_url()
+            order = shop.fetch_order_from_url(url)
+            next_url = order.next_url
+            updated += 1
+            if not next_url:
+                break
+
+
+    # max_page = shop.get_max_page()
+    # orders = shop.browse_orders(max_page)
+    #
+    # for order in orders[:20]:
+    #     url = order.get('order_url')
+    #     print(url)
+    #     shop.get_order_from_link(url, save=True)
+    # # TO BE UNCOMMENTED WHEN DB IS FINISHED
+    # # for page in range(max_page, 0):
+    # #     sh.browse_orders(page)
+    # shop.get_last_order_id()
+    #
+    # pass
 
 # TODO make functions that will continue with next order
 # make a log record according to which we will find the last written order and then continue
