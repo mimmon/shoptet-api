@@ -43,8 +43,8 @@ def order_id(oid):
     return data_to_response(data)
 
 
-@app.route('/orders/<oid>/<orderline>/')
-def order_orderlines(oid, orderline):
+@app.route('/orders/<oid>/orderlines/')
+def order_orderlines(oid):
     order = get_object_or_404(Order, Order.id==oid)
     orderlines = [orderline.serialized for orderline in order.order_lines]
     return data_to_response(orderlines)
