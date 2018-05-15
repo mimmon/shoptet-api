@@ -171,6 +171,7 @@ class Shoptet:
         # this is to ensure we can get those independently from sheer url
         r = re.search(r'\?id=(?P<order_id>\d+)', url)
         order_details['shop_order_id'] = r.group('order_id') if r else None
+        # todo handle last order!
         order_details['order_num'] = soup.h1.strong.text
         order_details['url'] = url
         order_details['next_url'] = self.get_next_url_from_soup(soup)
@@ -245,7 +246,11 @@ class Shoptet:
             _logger.warning('No url for order.')
             return None
 
-        order_details = self.read_order_from_url(url)
+        try:
+            order_details = self.read_order_from_url(url)
+        except AttributeError:  # reads from empty order site, does not find ceratin element
+            return None
+
         order = save_order(order_details, update=update)
 
         # make log

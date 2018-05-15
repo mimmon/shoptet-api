@@ -1,3 +1,3 @@
-from shoptet_api import models
-from shoptet_api import utils
-from shoptet_api import shoptet
+from shoptet_api import (config, models, app, auth, models, utils,
+                         shoptet, api, serializer, views
+                         )

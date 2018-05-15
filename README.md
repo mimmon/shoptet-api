@@ -52,14 +52,14 @@ That's all folks.
 
 * INIT: crawl through and index whole site - i.e. we will get url for each order
   This function will be handy if we have to start from scratch
-* parse orders so that we know the customer, the price and discount info + shipping details
+* _**parse orders so that we know the customer, the price and discount info + shipping details**_
 * add argument parser so that the program can be used from command line
 
 ### DB
 
 * _**integration with db - sqlite3 would be enough (using peewee)**_
 * _**create relevant models and convenience methods for easy data manipulation**_
-* store and use relevant data for faster data fetching
+* _**store and use relevant data for faster data fetching**_
 * allow updates on records, allow marking finished to deny updates if impossible
 
 
@@ -72,7 +72,7 @@ That's all folks.
 ### Cron jobs
 
 * must be available through PhantomJS or other driver not requiring GUI **!** 
-* allow regular checks for new orders
+* allow regular checks for new orders (require recording the last updated order)
 * automatic evaluation if user should get voucher
 * auto create voucher and send to user
 
@@ -81,10 +81,32 @@ That's all folks.
 
 * get voucher status
 * _create voucher_
-* use voucher in brick shop
-* convert points from brick shop to voucher
+* use voucher in brick shop (=deactivate on in shoptet)
+* convert points from brick shop to voucher 
 
 
 ### Client interface
 
 * server based api (flask rest?) to access db from third party apps (django: verne?)
+
+
+
+### SHOPTET API
+
+fetch - get from url and save to db (if save=True), return dictionary
+get - get from db (and update if fetch=True), return object
+
+`fetch_first_order()`
+
+`fetch_next_order(order=None)`
+
+`fetch_order(id=?, shop_id=?, url=?)`
+
+`get_last_added_order()`
+
+`fetch_next_link(order=None)` - open order in browser and get url of next order, 
+        if order is None, use the last added order, if none added, use the very first
+
+`fetch_close_date(order)`: open in browser, click on history and update activity status/close date
+
+logging - create order, update order

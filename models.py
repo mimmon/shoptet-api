@@ -3,10 +3,13 @@ from decimal import Decimal
 import random
 import re
 import string
+import uuid
 
 from peewee import *
+from flask_peewee.utils import get_dictionary_from_model
+from shoptet_api.app import db
 
-db = SqliteDatabase('shoptet.db')
+# db = SqliteDatabase('shoptet.db')
 
 
 # TODO make mapping from shoptet to choices (regex?)
@@ -43,13 +46,50 @@ class DBModel(Model):
     class Meta:
         database = db
 
+    date_format = '%Y-%m-%d'
+    time_format = '%H:%M:%S'
+    datetime_format = ' '.join([date_format, time_format])
+
     create_date = DateTimeField(default=datetime.datetime.now)
     write_date = DateTimeField(default=datetime.datetime.now)
+
+    def convert_value(self, value):
+        if isinstance(value, datetime.datetime):
+            return value.strftime(self.datetime_format)
+        elif isinstance(value, datetime.date):
+            return value.strftime(self.date_format)
+        elif isinstance(value, datetime.time):
+            return value.strftime(self.time_format)
+        elif isinstance(value, Model):
+            return value._pk
+        elif isinstance(value, (uuid.UUID, Decimal)):
+            return str(value)
+        else:
+            return value
+
+    def clean_data(self, data):
+        for key, value in data.items():
+            if isinstance(value, dict):
+                self.clean_data(value)
+            elif isinstance(value, (list, tuple)):
+                data[key] = map(self.clean_data, value)
+            else:
+                data[key] = self.convert_value(value)
+        return data
 
     def save(self, *args, **kwargs):
         _now = datetime.datetime.now()
         self.__data__.update({'write_date': _now})
         return super().save(*args, **kwargs)
+
+    def serialize(self, fields=None, exclude=None):
+        data = get_dictionary_from_model(self, fields, exclude)
+        return self.clean_data(data)
+
+    @property
+    def serialized(self):
+        # returns all fields
+        return self.serialize()
 
 
 class SysUser(DBModel):
@@ -127,7 +167,7 @@ class Voucher(DBModel):
     amount = DecimalField(null=True)
     valid_from = DateField(null=True)
     valid_to = DateField(null=True)
-    user_id = ForeignKeyField(User, backref='orders')
+    user_id = ForeignKeyField(User, backref='vouchers')
 
 
 class Log(DBModel):

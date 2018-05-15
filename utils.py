@@ -1,6 +1,7 @@
 from decimal import Decimal
 import logging
 import re
+from flask import Response, jsonify
 from peewee import *
 # from peewee import Expression  # the building block for expressions
 
@@ -253,3 +254,21 @@ def get_orderlines_from_soup(soup):
             'total_vat_including': p_total_vat_including,
         })
     return orderlines
+
+
+def make_response(data, status=None, mimetype=None):
+    if status is None:
+        status = 200
+    if mimetype is None:
+        mimetype = 'application/json'
+    return Response(data, status=status, mimetype=mimetype)
+
+
+def isdict(x):
+    return isinstance(x, dict)
+
+
+def data_to_response(data):
+    res = jsonify(**data) if isdict(data) else jsonify(data)
+    res.status_code = 200
+    return res
