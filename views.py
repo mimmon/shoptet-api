@@ -5,10 +5,10 @@ from flask_peewee.utils import get_object_or_404, object_list
 
 from peewee import fn
 
-from shoptet_api.app import app
-from shoptet_api.auth import authentification
-from shoptet_api.models import SysUser, User, Order, OrderLine, Voucher, Log, Shop
-from shoptet_api.utils import make_response, data_to_response
+from app import app
+from auth import authentification
+from models import SysUser, User, Order, OrderLine, Voucher, Log, Shop
+from utils import make_response, data_to_response
 
 SUBTRACT_CREDIT = 50
 

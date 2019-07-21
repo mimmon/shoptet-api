@@ -4,9 +4,9 @@ from flask import request, redirect
 from flask_peewee.admin import Admin, ModelAdmin, AdminPanel
 from flask_peewee.filters import QueryFilter
 
-from shoptet_api.app import app, db
-from shoptet_api.auth import authentification
-from shoptet_api.models import User, Order, Log, Voucher, Shop, SysUser
+from app import app, db
+from auth import authentification
+from models import User, Order, Log, Voucher, Shop, SysUser
 
 
 admin = Admin(app, authentification, branding='Example Site')

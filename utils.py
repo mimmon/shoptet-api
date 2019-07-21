@@ -221,21 +221,21 @@ def get_orderlines_from_soup(soup):
         # for now we ignore individual items
         # this iteration is to determine postage and transport prices
         tds = tr.find_all('td')
-        p_code = handle_element(tds[0], 'a', lambda x: x.text.strip())
-        p_img = handle_element(tds[1], 'img', lambda x: x['src'])
-        p_description = handle_element(tds[2], 'span', lambda x: x.text)
-        p_status = handle_contents(tds[3])
+        p_code = handle_element(tds[1], 'a', lambda x: x.text.strip())
+        p_img = handle_element(tds[2], 'img', lambda x: x['src'])
+        p_description = handle_element(tds[3], 'span', lambda x: x.text)
+        p_status = handle_contents(tds[4])
         # todo add units to amount
-        p_amount = handle_contents(tds[4],
+        p_amount = handle_contents(tds[5],
                                    lambda x: len(x.split()) > 1 and x.split()[0] or x,
                                    recursive=True)
-        p_unit_price = handle_content_price(tds[5])
+        p_unit_price = handle_content_price(tds[6])
         p_discount_percent = handle_contents(
-            tds[6], lambda x: x.span.text.strip().rstrip(' %'), Decimal, contents=False)
+            tds[7], lambda x: x.span.text.strip().rstrip(' %'), Decimal, contents=False)
         p_vat_percent = handle_contents(
-            tds[7], lambda x: x.strip().rstrip('%'), Decimal)
-        p_total_vat_including = handle_content_price(tds[8])
-        p_del = handle_contents(tds[9])
+            tds[8], lambda x: x.strip().rstrip('%'), Decimal)
+        p_total_vat_including = handle_content_price(tds[9])
+        p_del = handle_contents(tds[10])
 
         # todo store product lines and purchases for further analysis
         # first step requires distinguishing between products and services

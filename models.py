@@ -7,7 +7,10 @@ import uuid
 
 from peewee import *
 from flask_peewee.utils import get_dictionary_from_model
-from shoptet_api.app import db
+if __name__ == '__main__':
+    from shoptet_api.app import db
+else:
+    from app import db
 
 # db = SqliteDatabase('shoptet.db')
 
@@ -114,7 +117,8 @@ class User(DBModel):
     city = CharField(null=True)
     country = CharField(null=True)
     phone = CharField(null=True)
-
+    registered = BooleanField(default=False)
+    optin = BooleanField(default=False)
 
 class Shop(DBModel):
     name = CharField()
@@ -168,6 +172,15 @@ class Voucher(DBModel):
     valid_from = DateField(null=True)
     valid_to = DateField(null=True)
     user_id = ForeignKeyField(User, backref='vouchers')
+
+
+class Credit(DBModel):
+    user_id = ForeignKeyField(User, backref='users')
+    credit_date = DateTimeField(default=datetime.datetime.now)
+    amount = DecimalField(default=0)
+    order_id = ForeignKeyField(Order, backref='credit', null=True)
+    voucher_id = ForeignKeyField(Voucher, backref='credit', null=True)
+    note = CharField(null=True)
 
 
 class Log(DBModel):
@@ -267,7 +280,7 @@ def create_shops():
 
 def init_db():
     with db:
-        db.create_tables([SysUser, User, Shop, Order, OrderLine, Voucher, Log])
+        db.create_tables([SysUser, User, Shop, Order, OrderLine, Voucher, Credit, Log])
 
 
 if __name__ == '__main__':

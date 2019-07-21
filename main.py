@@ -1,10 +1,10 @@
-from shoptet_api.app import app, db
+from app import app, db
 
-from shoptet_api.auth import *
-from shoptet_api.admin import admin
-from shoptet_api.api import api
-from shoptet_api.models import *
-from shoptet_api.views import *
+from auth import *
+from admin import admin
+from api import api
+from models import *
+from views import *
 
 admin.setup()
 api.setup()

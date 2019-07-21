@@ -1,8 +1,8 @@
 from flask_peewee.rest import RestAPI, RestResource, UserAuthentication, AdminAuthentication, RestrictOwnerResource
 
-from shoptet_api.app import app
-from shoptet_api.auth import authentification
-from shoptet_api.models import User, Order, OrderLine, Voucher, Log, Shop
+from app import app
+from auth import authentification
+from models import User, Order, OrderLine, Voucher, Log, Shop
 
 
 user_auth = UserAuthentication(authentification)
