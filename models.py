@@ -164,6 +164,10 @@ class OrderLine(DBModel):
     image = CharField(null=True)
 
 
+def str2d(s, in_format='%Y-%m-%d'):
+    return datetime.datetime.strptime(s, in_format)
+
+
 class Voucher(DBModel):
     voucher_id = IntegerField()
     voucher_code = CharField()
@@ -172,6 +176,12 @@ class Voucher(DBModel):
     valid_from = DateField(null=True)
     valid_to = DateField(null=True)
     user_id = ForeignKeyField(User, backref='vouchers')
+
+    def is_valid(self):
+        today = datetime.date.today()
+        before = not self.valid_from or str2d(self.valid_from) <= today
+        after = not self.valid_to or str2d(self.valid_to) >= today
+        return before and after
 
 
 class Credit(DBModel):

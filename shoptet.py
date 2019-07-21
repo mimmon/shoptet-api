@@ -20,9 +20,9 @@ try:
 except (ImportError, SystemError):
     from utils import *
 try:
-    from .models import save_order, make_log
+    from .models import save_order, make_log, Voucher
 except (ImportError, SystemError):
-    from models import save_order, make_log
+    from models import save_order, make_log, Voucher
 
 _logger = logging.getLogger(__name__)
 
@@ -30,7 +30,8 @@ CONFIG_FILE = '/home/mimmon/.shoptet'
 config = parse_config(CONFIG_FILE)
 
 BASE_URL = config.get('BASE_URL', 'YOUR-URL')
-BASE_URL = BASE_URL + (os.sep if not BASE_URL.endswith(os.sep) else '')
+# BASE_URL = BASE_URL + (os.sep if not BASE_URL.endswith(os.sep) else '')
+BASE_URL = BASE_URL.rstrip(os.sep)
 ADMIN_URL = BASE_URL + '/admin'
 LOGIN_URL = ADMIN_URL + '/login'
 
@@ -380,6 +381,43 @@ class Shoptet:
         # <a href="/admin/zlavove-kupony-detail/" title="Pridať" class="btn btn-md btn-default button-add no-disable">Pridať</a>
         # <input name="addMoreCoupons" id="add-more-coupons" value="1" data-label-adjusted="true" type="radio">
 
+    @login_required
+    def list_vouchers(self, amount=1, **kwargs):
+        # will generate <amount> vouchers that will expire at <expiration>
+        if amount < 1:
+            return
+        self.get_vouchers_page()
+        missing = amount
+        form = self.browser.find_element(
+            By.XPATH, '//form[@action=\"{}/zlavove-kupony/\"]'.format(ADMIN_URL))
+        table = form.find_element(
+            By.XPATH, '//fieldset/div[@class=\"table-holder\"]/table/tbody')
+
+        voucher_list = []
+
+        for row in table.find_elements_by_tag_name('tr'):
+            tds = row.find_elements_by_tag_name('td')
+            code = tds[1].text
+            amount_raw = tds[3].text
+            voucher_type = 'percent' if amount_raw[-1] == '%' else 'sum'
+            amount = amount_raw.strip('%')
+            valid_from = tds[8].text and format_date(tds[8].text)
+            valid_to = tds[9].text and format_date(tds[9].text)
+
+            voucher_list.append(Voucher(voucher_code=code,
+                                        voucher_type=voucher_type,
+                                        amount=amount,
+                                        valid_from=valid_from,
+                                        valid_to=valid_to))
+
+            # refactor so that we can move to next page when more than 25
+            missing -=1
+            if missing < 1:
+                break
+
+        return voucher_list
+
+
 
 class Namespace:
     pass
@@ -390,46 +428,28 @@ class Parser:
     def __init__(self):
         self.program = sys.argv[0]
         self.sys_argv = sys.argv[1:]
-        self.namespace = Namespace()
-
-    def argument_validator(self):
-        """checks arguments of a command"""
-        result = []
-        if self.handler == 'order':
-            pass
-        if self.handler == 'voucher':
-            if self.command == 'create':
-                if not self.namespace.args:
-                    result = 0
-                else:
-                    error_message = '<voucher create NUM> if NUM either it defaults to 0 '\
-                                    'otherwise must be a non negativeinteger smaller than 501.'
-                    try:
-                        result = int(self.args[0])
-                    except:
-                        raise argparse.ArgumentTypeError(error_message)
-                    else:
-                        if not 0 <= result < 501:
-                            raise argparse.ArgumentTypeError(error_message)
-        return result
 
     def parse_arguments(self):
         parser = argparse.ArgumentParser(description='Shoptet API')
 
-        handlers = ['order', 'voucher']
-        parser.add_argument('domain', type=str, choices=handlers,
-                            help='An entity you want to work with {order | voucher}')
+        subparsers = parser.add_subparsers(title='domain parsers')
 
-        order_commands = ['update', 'status']
-        voucher_commands = ['create', 'invalidate', 'count', 'status']
-        available_commands = order_commands + voucher_commands
-        parser.add_argument('command', type=str, help='Command to perform',
-                            choices=available_commands)
-        parser.add_argument('args', nargs='*', type=self.argument_validator)
+        _domain = 'order'
+        order_commands = {'update', 'status'}
+        order_parser = subparsers.add_parser(_domain)
+        order_parser.add_argument('command', type=str, help='Command to perform',
+                                  choices=order_commands)
+        order_parser.set_defaults(domain=_domain)
 
-        self.namespace = parser.parse_args(self.sys_argv)
+        _domain = 'voucher'
+        voucher_commands = {'create', 'invalidate', 'count', 'status', 'list'}
+        voucher_parser = subparsers.add_parser(_domain)
+        voucher_parser.add_argument('command', type=str, help='Command to perform',
+                            choices=voucher_commands)
+        voucher_parser.add_argument('args', nargs='*', type=int)
+        voucher_parser.set_defaults(domain=_domain)
 
-        return self.namespace
+        return parser.parse_args(self.sys_argv)
 
 
 if __name__ == '__main__':
@@ -469,6 +489,12 @@ if __name__ == '__main__':
             amount = arguments.args[0] if arguments.args else 0
             shop.generate_vouchers(amount)
 
+        elif arguments.command == 'list':
+            amount = arguments.args[0] if arguments.args else 0
+            voucher_list = shop.list_vouchers(amount)
+            for v in voucher_list:
+                print(v.voucher_code)
+            # refactor - add subparser to allow adding output format, default = STDOUT
 
     # max_page = shop.get_max_page()
     # orders = shop.browse_orders(max_page)
