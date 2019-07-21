@@ -1,15 +1,18 @@
 #!venv/bin/python
 # -*- coding: utf-8 -*-
+import argparse
 from bs4 import BeautifulSoup
+import datetime
 from decimal import Decimal
 import logging
 from lxml import html
 import os
 import re
-import datetime
+import sys
 from peewee import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 
 try:
@@ -31,6 +34,10 @@ BASE_URL = BASE_URL + (os.sep if not BASE_URL.endswith(os.sep) else '')
 ADMIN_URL = BASE_URL + '/admin'
 LOGIN_URL = ADMIN_URL + '/login'
 
+ORDERS_URL = '/admin/objednavky/'
+ORDERS_OVERVIEW_URL = '/admin/prehlad-objednavok/'
+VOUCHERS_PAGE_URL = '/admin/zlavove-kupony/'
+
 EMAIL = config.get('EMAIL', 'EMAIL')
 PASSWORD = config.get('PASSWORD', 'PASSWORD')
 
@@ -44,7 +51,10 @@ class Shoptet:
     logged_in = None
 
     def __init__(self):
-        self.browser = webdriver.Firefox()
+        cap = DesiredCapabilities.FIREFOX
+        cap['marionette'] = True
+        self.browser = webdriver.Firefox(capabilities=cap)
+        # self.browser = webdriver.Chrome('/home/mimmon/project/shoptet/drivers/chromedriver')
         # browser = webdriver.PhantomJS()
 
     def find_pattern(self, pattern, get_first=False):
@@ -76,7 +86,6 @@ class Shoptet:
         self.logged_in = True
 
     def get_orders(self):
-
         el = self.browser.find_element(By.XPATH, "//a[@href='/admin/objednavky/']")
         el.click()
 
@@ -222,12 +231,17 @@ class Shoptet:
         order_details['discount'] = discount
 
         # shipping costs
-        shipping_lines = [line for line in order_lines if line['code'] is None]
-        shipping_cost = sum(line['total_vat_including'] for line in shipping_lines)
+        total = 'total_vat_including'
+        services_lines = [line for line in order_lines if line['code'] is None]
+        shipping_lines = [line for line in services_lines if line[total] >= 0]
+        discount_lines = [line for line in services_lines if line[total] < 0]
+        shipping_cost = sum(line[total] for line in shipping_lines)
+        order_details['discount'] += sum(line[total] for line in discount_lines)
 
         plain_price = order_details['total_price'] - shipping_cost
         # price applicable for loyalty system - only if no discount applied
         # add rules for applicable price - so that they are consistnent if system changes
+        # todo find out why this does not work anymore!!
         order_details['price_applicable'] = plain_price if not discount else Decimal('0.00')
         order_details['shipping_cost'] = shipping_cost
         order_details['shipping'] = ';'.join(ln['description'] for ln in shipping_lines)
@@ -324,28 +338,136 @@ class Shoptet:
         # filter active orders and update their status
         pass
 
+    def get_vouchers_page(self):
+        el = self.browser.find_element(By.XPATH, "//a[@href='/admin/marketing/']")
+        el.click()
+        el = self.browser.find_element(By.XPATH, "//a[@href='/admin/zlavove-kupony/']")
+        el.click()
+
+    @login_required
+    def generate_vouchers(self, amount=1, expiration_days=550, discount_percent=10):
+        # will generate <amount> vouchers that will expire at <expiration>
+        self.get_vouchers_page()
+        el = self.browser.find_element(By.XPATH, '//a[@href=\"/admin/zlavove-kupony-detail/\"]')
+        el.click()
+
+        el = self.browser.find_element(By.XPATH, '//label[@for=\"add-more-coupons\"]')
+        el.moveTo
+        el.click()
+
+        el = self.browser.find_element(By.XPATH, '//select[@id=\"coupon-count\"]')
+        el.click()
+        el = self.browser.find_element(By.XPATH, '//option[@value=\"{}\"]'.format(amount))
+        el.click()
+        el = self.browser.find_element(By.XPATH, '//select[@id=\"discount-type\"]')
+        el.click()
+        el = self.browser.find_element(By.XPATH, '//option[@value=\"percentual\"]'.format(amount))
+        el.click()
+        el = self.browser.find_element(By.XPATH, '//select[@id=\"discount-amount\"]')
+        el.send_keys(discount_percent)
+
+        _from = datetime.date.today()
+        _until = _from + datetime.timedelta(days=expiration_days)
+        valid_from = _from.strftime('%-d.%-m.%Y')
+        valid_until = _until.strftime('%-d.%-m.%Y')
+        el = self.browser.find_element(By.XPATH, '//select[@id=\"valid-from\"]')
+        el.send_keys(valid_from)
+        el = self.browser.find_element(By.XPATH, '//select[@id=\"valid-until\"]')
+        el.send_keys(valid_until)
+
+        el = self.browser.find_element(By.XPATH, '//input[@class=\"fake-submit\"]')
+        # <input value="" class="fake-submit" type="submit">
+        # <a href="/admin/zlavove-kupony-detail/" title="Pridať" class="btn btn-md btn-default button-add no-disable">Pridať</a>
+        # <input name="addMoreCoupons" id="add-more-coupons" value="1" data-label-adjusted="true" type="radio">
+
+
+class Namespace:
+    pass
+
+
+class Parser:
+
+    def __init__(self):
+        self.program = sys.argv[0]
+        self.sys_argv = sys.argv[1:]
+        self.namespace = Namespace()
+
+    def argument_validator(self):
+        """checks arguments of a command"""
+        result = []
+        if self.handler == 'order':
+            pass
+        if self.handler == 'voucher':
+            if self.command == 'create':
+                if not self.namespace.args:
+                    result = 0
+                else:
+                    error_message = '<voucher create NUM> if NUM either it defaults to 0 '\
+                                    'otherwise must be a non negativeinteger smaller than 501.'
+                    try:
+                        result = int(self.args[0])
+                    except:
+                        raise argparse.ArgumentTypeError(error_message)
+                    else:
+                        if not 0 <= result < 501:
+                            raise argparse.ArgumentTypeError(error_message)
+        return result
+
+    def parse_arguments(self):
+        parser = argparse.ArgumentParser(description='Shoptet API')
+
+        handlers = ['order', 'voucher']
+        parser.add_argument('domain', type=str, choices=handlers,
+                            help='An entity you want to work with {order | voucher}')
+
+        order_commands = ['update', 'status']
+        voucher_commands = ['create', 'invalidate', 'count', 'status']
+        available_commands = order_commands + voucher_commands
+        parser.add_argument('command', type=str, help='Command to perform',
+                            choices=available_commands)
+        parser.add_argument('args', nargs='*', type=self.argument_validator)
+
+        self.namespace = parser.parse_args(self.sys_argv)
+
+        return self.namespace
+
 
 if __name__ == '__main__':
-    shop = Shoptet()
-    shop.login()
 
-    # TODO add argparser
+    p = Parser()
+    arguments = p.parse_arguments()
 
-    action = 'update'
+    if arguments.domain == 'order':
 
-    if not Order.select().count():
-        shop.fetch_first_order()
+        shop = Shoptet()
+        shop.login()
 
-    if action == 'update':
-        updated = 0
-        next_url = None
-        while MAX_UPDATE_LIMIT and updated < MAX_UPDATE_LIMIT:
-            url = next_url or shop.get_next_url()
-            order = shop.fetch_order_from_url(url)
-            next_url = order.next_url
-            updated += 1
-            if not next_url:
-                break
+        if not Order.select().count():
+            shop.fetch_first_order()
+
+        if arguments.command == 'update':   # -u
+            updated = 0
+            next_url = None
+            while MAX_UPDATE_LIMIT and updated < MAX_UPDATE_LIMIT:
+                url = next_url or shop.get_next_url()
+                order = shop.fetch_order_from_url(url)
+                try:
+                    next_url = order.next_url
+                except AttributeError:
+                    break
+                else:
+                    updated += 1
+                    if not next_url:
+                        break
+
+    elif arguments.domain == 'voucher':
+
+        shop = Shoptet()
+        shop.login()
+
+        if arguments.command == 'create':
+            amount = arguments.args[0] if arguments.args else 0
+            shop.generate_vouchers(amount)
 
 
     # max_page = shop.get_max_page()
