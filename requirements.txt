@@ -16,6 +16,6 @@ pkg-resources==0.0.0
 selenium==3.11.0
 six==1.11.0
 webencodings==0.5.1
-Werkzeug==0.14.1
+Werkzeug==0.15.3
 wtf-peewee==3.0.0
 WTForms==2.1
